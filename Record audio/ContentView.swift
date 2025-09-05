@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct VoiceMemoView: View {
-    @State private var model = VoiceMemoModel()
+    @StateObject private var model = VoiceMemoModel()
     @State private var showShare = false
 
     var body: some View {
@@ -70,15 +70,11 @@ struct VoiceMemoView: View {
                 .frame(maxHeight: 220)
         }
         .padding()
-        .confirmationDialog("Save recording?", isPresented: $model.isPromptPresented, titleVisibility: .visible) {
-            Button("Save") { 
-                print("LOG: Save button pressed in dialog")
-                model.confirmSave() 
-            }
-            Button("Discard", role: .destructive) { 
-                print("LOG: Discard button pressed in dialog")
-                model.discardRecording() 
-            }
+        // .confirmationDialog(...)
+
+        .sheet(isPresented: $model.isPromptPresented) {
+            // Ensure the model is passed correctly to the sheet view
+            SaveRecordingView(model: model)
         }
     }
 
@@ -94,6 +90,49 @@ struct VoiceMemoView: View {
         let clamped = max(0, min(1, p))
         let hue = max(0.0, 0.33 - 0.33 * clamped)
         return Color(hue: hue, saturation: 0.95, brightness: 0.95)
+    }
+}
+
+struct SaveRecordingView: View {
+    @ObservedObject var model: VoiceMemoModel
+    @State private var filename: String = ""
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Recording Details")) {
+                    TextField("Filename", text: $filename)
+                        .autocorrectionDisabled()
+                }
+            }
+            .navigationTitle("Save Recording")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Discard", role: .destructive) {
+                        print("LOG: Discard button pressed in sheet")
+                        model.discardRecording()
+                        // isPromptPresented will become false in the model, dismissing the sheet
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        print("LOG: Save button pressed in sheet")
+                        model.confirmSave(with: filename)
+                        // isPromptPresented will become false in the model, dismissing the sheet
+                    }
+                    // Disable the save button if the filename is empty after trimming whitespace
+                    .disabled(filename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .onAppear {
+            // Pre-populate the text field with a default name (without the .m4a extension)
+            if let url = model.currentFileURL {
+                self.filename = url.deletingPathExtension().lastPathComponent
+            }
+        }
     }
 }
 

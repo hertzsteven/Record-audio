@@ -16,12 +16,26 @@ struct VoiceMemoView: View {
             Text("Model State: isRecording=\(model.isRecording)")
                 .font(.caption)
                 .foregroundColor(.secondary)
-            CustomProgressBar(
-                progress: model.elapsed / model.maxDuration,
-                color: progressColor(model.elapsed / model.maxDuration)
-            )
-            .frame(height: 28) // Make it wider and more noticeable
-            .padding(.horizontal)
+            
+            VStack(spacing: 8) {                
+                HStack {
+                    Text("0")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .monospacedDigit()
+                    CustomProgressBar(
+                        progress: model.elapsed / model.maxDuration,
+                        color: progressColor(model.elapsed / model.maxDuration)
+                    )
+                    .frame(height: 28)
+                    .padding(.horizontal,4)
+                    Text("\(Int(model.maxRecordingDuration))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal,8)
+            }
 
             // Timer
             Text(formatTime(model.elapsed))

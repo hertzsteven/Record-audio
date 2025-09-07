@@ -35,6 +35,8 @@ final class VoiceMemoModel: NSObject, ObservableObject {
     }
     var isRecordButtonEnabled: Bool { !isPromptPresented }
 
+    var maxRecordingDuration: TimeInterval { maxDuration }
+
     private var recorder: AVAudioRecorder? {
         didSet {
             if recorder != nil {
@@ -46,7 +48,7 @@ final class VoiceMemoModel: NSObject, ObservableObject {
     }
     private var timer: Timer?
     private var durationTimer: Timer?
-    let maxDuration: TimeInterval = 7
+    let maxDuration: TimeInterval = 4
     private let minSaveDuration: TimeInterval = 0.7
 
     // MARK: - Public API

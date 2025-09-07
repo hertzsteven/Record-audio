@@ -33,6 +33,11 @@ final class VoiceMemoModel: NSObject, ObservableObject {
             print("LOG: isPromptPresented changed to \(isPromptPresented)")
         }
     }
+    
+    @Published var isPlaying = false
+    @Published var playbackProgress: Double = 0
+    @Published var playbackDuration: TimeInterval = 0
+    
     var isRecordButtonEnabled: Bool { !isPromptPresented }
 
     var maxRecordingDuration: TimeInterval { maxDuration }
@@ -46,6 +51,10 @@ final class VoiceMemoModel: NSObject, ObservableObject {
             }
         }
     }
+    
+    private var player: AVAudioPlayer?
+    private var playbackTimer: Timer?
+    
     private var timer: Timer?
     private var durationTimer: Timer?
     let maxDuration: TimeInterval = 4
@@ -110,42 +119,77 @@ final class VoiceMemoModel: NSObject, ObservableObject {
         cleanupRecordingState(successfully: true, finalTime: finalTime)
     }
 
-    // MARK: - Helpers
+    // MARK: - Playback Methods
 
-    func confirmSave(with newName: String) {
-        print("LOG: confirmSave(with: \(newName)) called")
-        guard let sourceURL = currentFileURL else {
-            print("LOG: Error - currentFileURL is nil, cannot save.")
-            isPromptPresented = false
-            return
+    func togglePlayback() {
+        if isPlaying {
+            stopPlayback()
+        } else {
+            startPlayback()
         }
-
-        let sanitizedName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalNameWithExt = sanitizedName.isEmpty
-            ? sourceURL.lastPathComponent
-            : (sanitizedName.hasSuffix(".m4a") ? sanitizedName : "\(sanitizedName).m4a")
-
-        let destinationURL = sourceURL.deletingLastPathComponent().appendingPathComponent(finalNameWithExt)
-
-        if sourceURL.lastPathComponent != destinationURL.lastPathComponent {
-            do {
-                if FileManager.default.fileExists(atPath: destinationURL.path) {
-                    try FileManager.default.removeItem(at: destinationURL)
-                }
-                try FileManager.default.moveItem(at: sourceURL, to: destinationURL)
-                print("LOG: Renamed file to \(destinationURL.lastPathComponent)")
-                self.currentFileURL = destinationURL
-            } catch {
-                print("LOG: Error renaming file: \(error.localizedDescription)")
+    }
+    
+    func startPlayback() {
+        guard let url = currentFileURL else { return }
+        
+        do {
+            // Configure audio session for playback
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default)
+            try session.setActive(true)
+            
+            player = try AVAudioPlayer(contentsOf: url)
+            player?.delegate = self
+            player?.prepareToPlay()
+            
+            playbackDuration = player?.duration ?? 0
+            playbackProgress = 0
+            
+            if player?.play() == true {
+                isPlaying = true
+                startPlaybackTimer()
+            }
+        } catch {
+            print("LOG: Error starting playback: \(error)")
+        }
+    }
+    
+    func stopPlayback() {
+        player?.stop()
+        player = nil
+        isPlaying = false
+        playbackProgress = 0
+        stopPlaybackTimer()
+    }
+    
+    private func startPlaybackTimer() {
+        stopPlaybackTimer()
+        playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self, let player = self.player, player.isPlaying else { return }
+            Task { @MainActor in
+                self.playbackProgress = player.currentTime / player.duration
             }
         }
-        
-        self.elapsed = 0
-        self.isPromptPresented = false
+    }
+    
+    private func stopPlaybackTimer() {
+        playbackTimer?.invalidate()
+        playbackTimer = nil
+    }
+
+    // MARK: - Save/Discard Methods
+
+    func saveRecording() {
+        print("LOG: saveRecording() called")
+        // Recording is already saved with timestamp name, just dismiss the prompt
+        elapsed = 0
+        isPromptPresented = false
+        stopPlayback()
     }
 
     func discardRecording() {
         print("LOG: discardRecording() called")
+        stopPlayback()
         if let url = currentFileURL {
             try? FileManager.default.removeItem(at: url)
         }
@@ -153,6 +197,8 @@ final class VoiceMemoModel: NSObject, ObservableObject {
         elapsed = 0
         isPromptPresented = false
     }
+
+    // MARK: - Helpers
 
     private func requestMicPermission() async throws -> Bool {
         try await withCheckedThrowingContinuation { cont in
@@ -245,6 +291,17 @@ extension VoiceMemoModel: AVAudioRecorderDelegate {
             guard self.recorder === recorder else { return }
             self.isRecording = false
             self.cleanupRecordingState(successfully: false, finalTime: currentTime)
+        }
+    }
+}
+
+// MARK: - AVAudioPlayerDelegate
+extension VoiceMemoModel: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            self.isPlaying = false
+            self.playbackProgress = 0
+            self.stopPlaybackTimer()
         }
     }
 }

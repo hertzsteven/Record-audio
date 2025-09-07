@@ -109,44 +109,116 @@ struct VoiceMemoView: View {
 
 struct SaveRecordingView: View {
     @ObservedObject var model: VoiceMemoModel
-    @State private var filename: String = ""
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationView {
-            Form {
-                Section(header: Text("Recording Details")) {
-                    TextField("Filename", text: $filename)
-                        .autocorrectionDisabled()
+            VStack(spacing: 24) {
+                VStack(spacing: 16) {
+                    Text("Recording Complete")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    if let url = model.currentFileURL {
+                        Text(url.lastPathComponent)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    
+                    Text("Duration: \(formatTime(model.elapsed))")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
-            }
-            .navigationTitle("Save Recording")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                
+                VStack(spacing: 16) {
+                    // Playback progress bar - only show when playback duration is available
+                    if model.playbackDuration > 0 && (model.isPlaying || model.playbackProgress > 0) {
+                        VStack(spacing: 8) {
+                            HStack {
+                                Text("0:00")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .monospacedDigit()
+                                
+                                CustomProgressBar(
+                                    progress: model.playbackProgress,
+                                    color: .blue
+                                )
+                                .frame(height: 4)
+                                
+                                Text(formatTime(model.playbackDuration))
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .monospacedDigit()
+                            }
+                        }
+                    }
+                    
+                    // Play/Pause button
+                    Button(action: {
+                        print("LOG: Play/Pause button pressed")
+                        model.togglePlayback()
+                    }) {
+                        HStack {
+                            Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
+                            Text(model.isPlaying ? "Pause" : "Play Recording")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Color.blue)
+                        .cornerRadius(25)
+                    }
+                }
+                
+                Spacer()
+                
+                // Save and Discard buttons
+                HStack(spacing: 16) {
                     Button("Discard", role: .destructive) {
                         print("LOG: Discard button pressed in sheet")
                         model.discardRecording()
-                        // isPromptPresented will become false in the model, dismissing the sheet
                     }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    .font(.headline)
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 25)
+                            .stroke(Color.red, lineWidth: 2)
+                    )
+                    
+                    Button("Save Recording") {
                         print("LOG: Save button pressed in sheet")
-                        model.confirmSave(with: filename)
-                        // isPromptPresented will become false in the model, dismissing the sheet
+                        model.saveRecording()
                     }
-                    // Disable the save button if the filename is empty after trimming whitespace
-                    .disabled(filename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.green)
+                    .cornerRadius(25)
                 }
             }
+            .padding()
+            .navigationTitle("Review Recording")
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .onAppear {
-            // Pre-populate the text field with a default name (without the .m4a extension)
-            if let url = model.currentFileURL {
-                self.filename = url.deletingPathExtension().lastPathComponent
-            }
+        .onDisappear {
+            // Stop playback when sheet is dismissed
+            model.stopPlayback()
         }
+    }
+    
+    private func formatTime(_ t: TimeInterval) -> String {
+        let s = Int(t)
+        let ms = Int((t - Double(s)) * 100)
+        let m = s / 60
+        let r = s % 60
+        return String(format: "%02d:%02d.%02d", m, r, ms)
     }
 }
 
